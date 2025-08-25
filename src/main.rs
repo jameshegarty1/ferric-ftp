@@ -1,11 +1,10 @@
-use crate::sftp::{SftpCommand, SftpSession};
+use crate::sftp::{CommandOutput, SftpCommand, SftpSession};
 use interface::CommandInterface;
 use ssh2::Session;
-use std::fmt::Debug;
-use std::io::prelude::*;
 use std::net::TcpStream;
 use std::process::exit;
-use log::{info, warn, error};
+use log::{LevelFilter, error, info, debug};
+use env_logger::Builder;
 
 mod interface;
 mod sftp;
@@ -13,7 +12,17 @@ mod util;
 const SFTP_SUPPORTED_VERSION: u32 = 3;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    let mut builder = Builder::from_default_env();
+    builder
+        .default_format()
+        .filter(None, LevelFilter::Debug)
+        .target(env_logger::Target::Pipe(Box::new(std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("ferric_ftp.log")
+            .unwrap())))
+        .init();
+
     let tcp = TcpStream::connect("test.rebex.net:22")?;
 
     let mut session = Session::new()?;
@@ -29,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sftp_client = if let Ok(client) = SftpSession::generate_client(channel, SFTP_SUPPORTED_VERSION) {
         client
     } else {
-        println!("SFTP error: failed to create client");
+        error!("SFTP error: failed to create client");
         exit(1);
     };
 
@@ -41,28 +50,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match CommandInterface::parse_next_input() {
             Ok(ref command) => match command {
                 SftpCommand::Ls { path } => {
-                    println!("Got ls command with path {:?}", path);
+                    info!("Got ls command with path {:?}", path);
                     match sftp_client.execute_command( &command ) {
                         Ok(CommandOutput) => {
+                            info!("{}", CommandOutput.message);
                             continue
                         },
                         Err(e) => {
-                            println!("Failed to execute command: {:?}", e);
+                            error!("Failed to execute command: {:?}", e);
 
                         }
                     }
                 },
                 SftpCommand::Cd { path } => {
-                    println!("Got cd command with path {:?}", path);
+                    info!("Got cd command with path {:?}", path);
                 },
                 SftpCommand::Exit => {
-                    println!("Got exit command");
+                    info!("Got exit command");
                     running = false;
                 }
                 _ => {}
             },
             Err(_) => {
-                running = false;
+                println!("Error parsing command!");
             }
         }
     }

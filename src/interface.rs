@@ -34,8 +34,18 @@ impl CommandInterface {
             Some("exit") => {
                 Ok(SftpCommand::Exit)
             }
-            Some(&_) => todo!(),
+            Some("help") => {
+                Self::print_help();
+                Ok(SftpCommand::Help)
+            }
+            Some(&_) => {
+                {Err(io::Error::new(io::ErrorKind::InvalidInput, "Unknown command!"))}
+            },
             None => {Err(io::Error::new(io::ErrorKind::InvalidInput, "No command"))}
         }
+    }
+
+    fn print_help() {
+        println!("Available commands:\nls\ncd\nget\nput\nexit");
     }
 }
