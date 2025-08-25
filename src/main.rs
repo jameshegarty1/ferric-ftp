@@ -1,15 +1,15 @@
-use crate::sftp::{CommandOutput, SftpCommand, SftpSession};
 use interface::CommandInterface;
 use ssh2::Session;
 use std::net::TcpStream;
 use std::process::exit;
 use log::{LevelFilter, error, info, debug};
 use env_logger::Builder;
+use crate::sftp::{SftpCommand, SftpSession};
+use crate::sftp::constants::*;
 
 mod interface;
-mod sftp;
 mod util;
-const SFTP_SUPPORTED_VERSION: u32 = 3;
+mod sftp;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = Builder::from_default_env();
@@ -58,7 +58,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         },
                         Err(e) => {
                             error!("Failed to execute command: {:?}", e);
-
                         }
                     }
                 },

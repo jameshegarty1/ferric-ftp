@@ -31,7 +31,7 @@ impl CommandInterface {
                 let path = PathBuf::from(tokens.next().unwrap_or("~"));
                 Ok(SftpCommand::Cd { path })
             },
-            Some("exit") => {
+            Some("bye") => {
                 Ok(SftpCommand::Exit)
             }
             Some("help") => {
@@ -46,6 +46,6 @@ impl CommandInterface {
     }
 
     fn print_help() {
-        println!("Available commands:\nls\ncd\nget\nput\nexit");
+        println!("Available commands:\nls\ncd\nget\nput\nbye");
     }
 }
