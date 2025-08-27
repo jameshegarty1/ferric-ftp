@@ -1,13 +1,14 @@
-use std::collections::HashMap;
-use std::io::{Read, Write};
 use log::info;
 use ssh2::Channel;
+use std::collections::HashMap;
+use std::io::{Read, Write};
 
+use super::client::SftpClient;
 use super::constants::*;
 use super::error::SftpError;
+use super::packet::ClientPacket;
+use super::packet::ServerPacket;
 use super::types::FileAttributes;
-use super::packet::SftpPacket;
-use super::client::SftpClient;
 
 pub struct SftpSession {
     pub channel: Channel,
@@ -19,7 +20,7 @@ pub struct SftpSession {
 
 impl SftpSession {
     pub fn generate_client(mut channel: Channel, version: u32) -> Result<SftpClient, SftpError> {
-        let init_packet = SftpPacket::Init { version };
+        let init_packet = ClientPacket::Init { version };
         channel
             .write_all(&init_packet.to_bytes())
             .map_err(|e| SftpError::ClientError(e.into()))?;
@@ -32,20 +33,63 @@ impl SftpSession {
             handles: HashMap::new(),
         };
 
-        match SftpPacket::from_session(&mut session)? {
-            SftpPacket::Version { version: _ } => Ok(SftpClient { session }),
+        match ServerPacket::from_session(&mut session)? {
+            ServerPacket::Version { version: _ } => {
+                // Initialize working dir with a RealPath request
+                let realpath_packet = ClientPacket::RealPath {
+                    request_id: session.next_request_id,
+                    path: ".".to_string(),
+                };
+                session.next_request_id += 1;
+                session
+                    .send_packet(realpath_packet)
+                    .map_err(|e| SftpError::ClientError(e.into()))?;
+
+                match ServerPacket::from_session(&mut session)? {
+                    ServerPacket::Name { request_id, files } => {
+                        if files.len() == 1 {
+                            // The first (and only) entry in the response is the absolute path
+                            session.working_dir = files[0].short_name.clone();
+                            info!("Initialized working directory: {}", session.working_dir);
+                        } else {
+                            return Err(SftpError::ClientError(
+                                std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    "Unexpected number of paths in realpath response",
+                                ).into(),
+                            ));
+                        }
+                    }
+                    ServerPacket::Status { request_id, status_code, message, .. } => {
+                        return Err(SftpError::ServerError {
+                            code: status_code,
+                            message: message,
+                        });
+                    }
+                    _ => {
+                        return Err(SftpError::ClientError(
+                            std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                "Unexpected response type for realpath",
+                            ).into(),
+                        ));
+                    }
+                }
+                Ok(SftpClient { session })
+            }
             _ => Err(SftpError::ClientError(
                 std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "SFTP error when creating SFTP session",
                 )
-                    .into(),
+                .into(),
             )),
         }
     }
 
-    pub fn send_packet(&mut self, packet: SftpPacket) -> Result<(), std::io::Error> {
+    pub fn send_packet(&mut self, packet: ClientPacket) -> Result<(), std::io::Error> {
         self.channel.write_all(&packet.to_bytes())?;
+        self.channel.flush()?;
         Ok(())
     }
 

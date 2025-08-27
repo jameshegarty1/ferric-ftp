@@ -3,7 +3,8 @@ use log::info;
 
 use super::client::SftpClient;
 use super::error::SftpError;
-use super::packet::SftpPacket;
+use super::packet::ClientPacket;
+use super::packet::ServerPacket;
 use super::types::{CommandOutput, SftpStatus};
 
 pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<CommandOutput, SftpError> {
@@ -11,7 +12,7 @@ pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Command
         .to_str()
         .ok_or_else(|| SftpError::ClientError("Invalid UTF-8 in path".into()))?;
 
-    let opendir_packet = SftpPacket::OpenDir {
+    let opendir_packet = ClientPacket::OpenDir {
         request_id: client.session.next_request_id,
         path: path_str.to_string(),
     };
@@ -23,22 +24,22 @@ pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Command
 
     client.session.next_request_id += 1;
 
-    let opendir_response_packet = SftpPacket::from_session(&mut client.session)?;
+    let opendir_response_packet = ServerPacket::from_session(&mut client.session)?;
 
     match opendir_response_packet {
-        SftpPacket::Status {
+        ServerPacket::Status {
             request_id,
-            error_code,
+            status_code,
             message,
         } => {
             return Err(SftpError::UnknownError {
                 message: format!(
                     "SFTP StatusMessage Request {} Error Code: {} Message: {}",
-                    request_id, error_code, message
+                    request_id, status_code, message
                 ),
             });
         }
-        SftpPacket::Handle { request_id, handle } => {
+        ServerPacket::Handle { request_id, handle } => {
             info!("Got a handle {:?} for path {}", handle, path.display());
             client
                 .session
@@ -63,7 +64,7 @@ pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Command
 
     let mut files = Vec::new();
     loop {
-        let readdir_packet = SftpPacket::ReadDir {
+        let readdir_packet = ClientPacket::ReadDir {
             request_id: client.session.next_request_id,
             handle: handle.clone(),
         };
@@ -75,26 +76,26 @@ pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Command
 
         client.session.next_request_id += 1;
 
-        let readdir_response_packet = SftpPacket::from_session(&mut client.session)?;
+        let readdir_response_packet = ServerPacket::from_session(&mut client.session)?;
 
         match readdir_response_packet {
-            SftpPacket::Status {
+            ServerPacket::Status {
                 request_id,
-                error_code,
+                status_code,
                 message,
             } => {
-                if error_code == SftpStatus::Eof as u32 {
+                if status_code == SftpStatus::Eof as u32 {
                     break;
                 } else {
                     return Err(SftpError::UnknownError {
                         message: format!(
                             "Unexpected Status message: {} - {}",
-                            error_code, message
+                            status_code, message
                         ),
                     });
                 }
             }
-            SftpPacket::Name {
+            ServerPacket::Name {
                 request_id,
                 files: names,
             } => {
@@ -109,7 +110,7 @@ pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Command
         }
     }
 
-    let close_packet = SftpPacket::Close {
+    let close_packet = ClientPacket::Close {
         request_id: client.session.next_request_id,
         handle,
     };
@@ -119,21 +120,21 @@ pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Command
         .send_packet(close_packet)
         .map_err(|e| SftpError::ClientError(Box::new(e)))?;
 
-    let close_response_packet = SftpPacket::from_session(&mut client.session)?;
+    let close_response_packet = ServerPacket::from_session(&mut client.session)?;
 
     match close_response_packet {
-        SftpPacket::Status {
+        ServerPacket::Status {
             request_id,
-            error_code,
+            status_code,
             message,
         } => {
-            if error_code == SftpStatus::Ok as u32 {
+            if status_code == SftpStatus::Ok as u32 {
                 {}
             } else {
                 return Err(SftpError::UnknownError {
                     message: format!(
                         "Unexpected Status message: {} - {}",
-                        error_code, message
+                        status_code, message
                     ),
                 });
             }
