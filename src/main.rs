@@ -64,8 +64,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 SftpCommand::Cd { path } => {
                     info!("Got cd command with path {:?}", path);
                 },
-                SftpCommand::Exit => {
-                    info!("Got exit command");
+                SftpCommand::Pwd => {
+                    info!("Got pwd command");
+                    print!("{}\n", sftp_client.session.working_dir);
+                },
+                SftpCommand::Bye => {
+                    info!("Got bye command");
                     running = false;
                 }
                 _ => {}

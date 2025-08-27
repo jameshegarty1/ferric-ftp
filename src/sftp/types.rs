@@ -33,7 +33,7 @@ pub enum SftpCommand {
     },
     Pwd,
     Help,
-    Exit,
+    Bye,
 }
 
 pub struct CommandOutput {
