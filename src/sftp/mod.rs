@@ -6,7 +6,5 @@ pub mod session;
 pub mod client;
 pub mod commands;
 
-pub use client::SftpClient;
-pub use error::SftpError;
-pub use types::{FileAttributes, SftpCommand, CommandOutput, FileInfo};
+pub use types::SftpCommand;
 pub use session::SftpSession;

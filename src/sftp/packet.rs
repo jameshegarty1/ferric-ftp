@@ -1,6 +1,6 @@
 use super::constants::*;
 use super::error::SftpError;
-use super::types::{FileAttributes, FileInfo, SftpStatus};
+use super::types::{FileAttributes, FileInfo};
 use super::session::SftpSession;
 use log::info;
 

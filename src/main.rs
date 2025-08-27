@@ -2,7 +2,7 @@ use interface::CommandInterface;
 use ssh2::Session;
 use std::net::TcpStream;
 use std::process::exit;
-use log::{LevelFilter, error, info, debug};
+use log::{LevelFilter, error, info};
 use env_logger::Builder;
 use crate::sftp::{SftpCommand, SftpSession};
 use crate::sftp::constants::*;
@@ -52,8 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 SftpCommand::Ls { path } => {
                     info!("Got ls command with path {:?}", path);
                     match sftp_client.execute_command( &command ) {
-                        Ok(CommandOutput) => {
-                            info!("{}", CommandOutput.message);
+                        Ok(command_output) => {
+                            info!("{}", command_output.message);
                             continue
                         },
                         Err(e) => {

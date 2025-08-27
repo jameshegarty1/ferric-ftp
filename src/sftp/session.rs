@@ -60,7 +60,7 @@ impl SftpSession {
                             ));
                         }
                     }
-                    ServerPacket::Status { request_id, status_code, message, .. } => {
+                    ServerPacket::Status {  status_code, message, .. } => {
                         return Err(SftpError::ServerError {
                             code: status_code,
                             message: message,
