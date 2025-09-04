@@ -33,12 +33,12 @@ impl CommandInterface {
                 let path = PathBuf::from(tokens.next().unwrap_or("~"));
                 Ok(SftpCommand::Cd { path })
             }
+            Some("pwd") => Ok(SftpCommand::Pwd),
             Some("bye") => Ok(SftpCommand::Bye),
             Some("help") => {
                 Self::print_help();
                 Ok(SftpCommand::Help)
             }
-            Some("pwd") => Ok(SftpCommand::Pwd),
             Some(&_) => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Unknown command!",

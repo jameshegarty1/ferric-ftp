@@ -7,9 +7,11 @@ pub const SSH_FXP_CLOSE: u8 = 4;
 pub const SSH_FXP_OPENDIR: u8 = 11;
 pub const SSH_FXP_READDIR: u8 = 12;
 pub const SSH_FXP_REALPATH: u8 = 16;
+pub const SSH_FXP_STAT: u8 = 16;
 pub const SSH_FXP_HANDLE: u8 = 102;
 pub const SSH_FXP_NAME: u8 = 104;
 pub const SSH_FXP_STATUS: u8 = 101;
+pub const SSH_FXP_ATTRS: u8 = 105;
 
 // File attribute flags
 pub const SSH_FILEXFER_ATTR_SIZE: u32 = 0x00000001;

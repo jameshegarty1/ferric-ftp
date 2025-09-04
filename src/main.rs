@@ -63,10 +63,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
                 SftpCommand::Cd { path } => {
                     info!("Got cd command with path {:?}", path);
+                    match sftp_client.execute_command( &command ) {
+                        Ok(command_output) => {
+                            info!("{}", command_output.message);
+                            continue
+                        },
+                        Err(e) => {
+                            error!("Failed to execute command: {:?}", e);
+                        }
+                    }
                 },
                 SftpCommand::Pwd => {
                     info!("Got pwd command");
-                    print!("{}\n", sftp_client.session.working_dir);
+                    print!("{}\n", sftp_client.session.working_dir.display());
                 },
                 SftpCommand::Bye => {
                     info!("Got bye command");

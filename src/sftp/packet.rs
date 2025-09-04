@@ -15,6 +15,7 @@ pub enum ClientPacket {
     ReadDir { request_id: u32, handle: Vec<u8> },
     Close { request_id: u32, handle: Vec<u8> },
     RealPath { request_id: u32, path: String },
+    Stat { request_id: u32, path: String },
 }
 
 #[derive(Debug)]
@@ -33,6 +34,7 @@ impl SftpPacketInfo for ClientPacket {
             ClientPacket::ReadDir { .. } => SSH_FXP_READDIR,
             ClientPacket::Close { .. } => SSH_FXP_CLOSE,
             ClientPacket::RealPath { .. } => SSH_FXP_REALPATH,
+            ClientPacket::Stat { .. } => SSH_FXP_STAT,
         }
     }
 
@@ -208,8 +210,9 @@ impl ServerPacket {
                 let request_id = session.read_u32()?;
                 remaining_bytes -= 4;
 
-                info!("Status Response to request_id: {}", request_id);
                 let status_code = session.read_u32()?;
+
+                info!("Status Response to request_id: {} with code: {}", request_id, status_code);
                 remaining_bytes -= 4;
 
                 let message = String::from_utf8(session.read_string()?)

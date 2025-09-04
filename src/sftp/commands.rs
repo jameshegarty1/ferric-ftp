@@ -1,3 +1,4 @@
+use std::os::unix::prelude::OsStrExt;
 use std::path::PathBuf;
 use log::info;
 
@@ -161,5 +162,56 @@ pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Command
 }
 
 pub fn change_directory(client: &mut SftpClient, path: &PathBuf) -> Result<CommandOutput, SftpError> {
-    todo!("Implement change_directory")
+    let new_path = if path.starts_with("/") {
+        PathBuf::from(path)
+    } else {
+        client.session.working_dir.join(path)
+    };
+
+    let path_str = new_path.to_string_lossy();
+    // Check its a real path
+    let stat_packet = ClientPacket::Stat {
+        request_id: client.session.next_request_id,
+        path: path_str.to_string(),
+    };
+
+    client.session.send_packet(stat_packet).map_err(|e| {
+        SftpError::ClientError(Box::new(e))
+    })?;
+
+    client.session.next_request_id += 1;
+
+    match ServerPacket::from_session(&mut client.session)? {
+        ServerPacket::Name { request_id, files } => {
+            if files.len() == 1 {
+                client.session.working_dir = PathBuf::from(files[0].short_name.clone());
+            } else {
+                return Err(SftpError::ClientError(
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Unexpected number of paths in realpath response",
+                    ).into(),
+                ));
+            }
+        }
+        ServerPacket::Status {  status_code, message, .. } => {
+            return Err(SftpError::ServerError {
+                code: status_code,
+                message: message,
+            });
+        }
+        _ => {
+            return Err(SftpError::ClientError(
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Unexpected response type for realpath",
+                ).into(),
+            ));
+        }
+    }
+
+    Ok(CommandOutput {
+        result: true,
+        message: format!("Set working directory to {}", path.display()),
+    })
 }

@@ -2,7 +2,7 @@ use log::info;
 use ssh2::Channel;
 use std::collections::HashMap;
 use std::io::{Read, Write};
-
+use std::path::PathBuf;
 use super::client::SftpClient;
 use super::constants::*;
 use super::error::SftpError;
@@ -13,7 +13,7 @@ use super::types::FileAttributes;
 pub struct SftpSession {
     pub channel: Channel,
     pub version: u32,
-    pub working_dir: String,
+    pub working_dir: PathBuf,
     pub next_request_id: u32,
     pub handles: HashMap<String, Vec<u8>>,
 }
@@ -28,7 +28,7 @@ impl SftpSession {
         let mut session = SftpSession {
             channel: channel,
             version: version,
-            working_dir: String::new(),
+            working_dir: PathBuf::new(),
             next_request_id: 0,
             handles: HashMap::new(),
         };
@@ -49,8 +49,8 @@ impl SftpSession {
                     ServerPacket::Name { request_id, files } => {
                         if files.len() == 1 {
                             // The first (and only) entry in the response is the absolute path
-                            session.working_dir = files[0].short_name.clone();
-                            info!("Initialized working directory: {}", session.working_dir);
+                            session.working_dir = PathBuf::from(&files[0].short_name);
+                            info!("Initialized working directory: {}", session.working_dir.display());
                         } else {
                             return Err(SftpError::ClientError(
                                 std::io::Error::new(
