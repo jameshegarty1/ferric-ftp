@@ -1,6 +1,5 @@
-use std::os::unix::prelude::OsStrExt;
-use std::path::PathBuf;
 use log::info;
+use std::path::PathBuf;
 
 use super::client::SftpClient;
 use super::error::SftpError;
@@ -133,10 +132,7 @@ pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Command
                 {}
             } else {
                 return Err(SftpError::UnknownError {
-                    message: format!(
-                        "Unexpected Status message: {} - {}",
-                        status_code, message
-                    ),
+                    message: format!("Unexpected Status message: {} - {}", status_code, message),
                 });
             }
         }
@@ -161,11 +157,14 @@ pub fn list_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Command
     })
 }
 
-pub fn change_directory(client: &mut SftpClient, path: &PathBuf) -> Result<CommandOutput, SftpError> {
+pub fn change_directory(
+    client: &mut SftpClient,
+    path: &PathBuf,
+) -> Result<CommandOutput, SftpError> {
     let new_path = if path.starts_with("/") {
         PathBuf::from(path)
     } else {
-        client.session.working_dir.join(path)
+        client.working_dir.join(path)
     };
 
     let path_str = new_path.to_string_lossy();
@@ -175,26 +174,32 @@ pub fn change_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Comma
         path: path_str.to_string(),
     };
 
-    client.session.send_packet(stat_packet).map_err(|e| {
-        SftpError::ClientError(Box::new(e))
-    })?;
+    client
+        .session
+        .send_packet(stat_packet)
+        .map_err(|e| SftpError::ClientError(Box::new(e)))?;
 
     client.session.next_request_id += 1;
 
     match ServerPacket::from_session(&mut client.session)? {
         ServerPacket::Name { request_id, files } => {
             if files.len() == 1 {
-                client.session.working_dir = PathBuf::from(files[0].short_name.clone());
+                client.working_dir = PathBuf::from(files[0].short_name.clone());
             } else {
                 return Err(SftpError::ClientError(
                     std::io::Error::new(
                         std::io::ErrorKind::Other,
                         "Unexpected number of paths in realpath response",
-                    ).into(),
+                    )
+                    .into(),
                 ));
             }
         }
-        ServerPacket::Status {  status_code, message, .. } => {
+        ServerPacket::Status {
+            status_code,
+            message,
+            ..
+        } => {
             return Err(SftpError::ServerError {
                 code: status_code,
                 message: message,
@@ -205,7 +210,8 @@ pub fn change_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Comma
                 std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "Unexpected response type for realpath",
-                ).into(),
+                )
+                .into(),
             ));
         }
     }
@@ -215,3 +221,4 @@ pub fn change_directory(client: &mut SftpClient, path: &PathBuf) -> Result<Comma
         message: format!("Set working directory to {}", path.display()),
     })
 }
+

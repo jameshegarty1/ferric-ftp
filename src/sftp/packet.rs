@@ -1,13 +1,14 @@
 use super::constants::*;
 use super::error::SftpError;
-use super::types::{FileAttributes, FileInfo};
 use super::session::SftpSession;
+use super::types::{FileAttributes, FileInfo};
 use log::info;
 
 pub trait SftpPacketInfo {
     fn packet_type(&self) -> u8;
     fn packet_name(&self) -> &'static str;
 }
+
 #[derive(Debug)]
 pub enum ClientPacket {
     Init { version: u32 },
@@ -20,10 +21,22 @@ pub enum ClientPacket {
 
 #[derive(Debug)]
 pub enum ServerPacket {
-    Version { version: u32 },
-    Handle { request_id: u32, handle: Vec<u8> },
-    Name { request_id: u32, files: Vec<FileInfo> },
-    Status { request_id: u32, status_code: u32, message: String },
+    Version {
+        version: u32,
+    },
+    Handle {
+        request_id: u32,
+        handle: Vec<u8>,
+    },
+    Name {
+        request_id: u32,
+        files: Vec<FileInfo>,
+    },
+    Status {
+        request_id: u32,
+        status_code: u32,
+        message: String,
+    },
 }
 
 impl SftpPacketInfo for ClientPacket {
@@ -45,6 +58,7 @@ impl SftpPacketInfo for ClientPacket {
             ClientPacket::ReadDir { .. } => "SSH_FXP_READDIR",
             ClientPacket::Close { .. } => "SSH_FXP_CLOSE",
             ClientPacket::RealPath { .. } => "SSH_FXP_REALPATH",
+            ClientPacket::Stat { .. } => "SSH_FXP_STAT",
         }
     }
 }
@@ -138,6 +152,18 @@ impl ClientPacket {
                 packet.extend(payload);
                 packet
             }
+            ClientPacket::Stat { request_id, path } => {
+                let mut payload: Vec<u8> = Vec::new();
+                let mut packet: Vec<u8> = Vec::new();
+                payload.push(SSH_FXP_STAT);
+                payload.extend_from_slice(&request_id.to_be_bytes());
+                payload.extend_from_slice(&path.len().to_be_bytes());
+                payload.extend_from_slice(path.as_bytes());
+                let length = payload.len() as u32;
+                packet.extend_from_slice(&length.to_be_bytes());
+                packet.extend(payload);
+                packet
+            }
         }
     }
 }
@@ -212,7 +238,10 @@ impl ServerPacket {
 
                 let status_code = session.read_u32()?;
 
-                info!("Status Response to request_id: {} with code: {}", request_id, status_code);
+                info!(
+                    "Status Response to request_id: {} with code: {}",
+                    request_id, status_code
+                );
                 remaining_bytes -= 4;
 
                 let message = String::from_utf8(session.read_string()?)
@@ -235,7 +264,7 @@ impl ServerPacket {
                     std::io::ErrorKind::InvalidData,
                     format!("Unknown message type: {}", message_type),
                 )
-                    .into(),
+                .into(),
             )),
         }
     }
