@@ -11,4 +11,5 @@ pub enum SftpError {
     UnexpectedPacket(&'static str),
     UnexpectedResponse(&'static str),
     UnknownError,
+    UnexpectedCommand,
 }

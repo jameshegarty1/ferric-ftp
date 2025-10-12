@@ -9,7 +9,6 @@ use std::process::exit;
 
 mod interface;
 mod sftp;
-mod util;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Why is it so confusing to initialise a logger??
