@@ -1,5 +1,4 @@
 pub mod client;
-pub mod commands;
 pub mod constants;
 pub mod error;
 pub mod packet;
@@ -9,3 +8,5 @@ pub mod types;
 pub use client::SftpClient;
 pub use types::SftpCommand;
 
+#[cfg(test)]
+mod tests;

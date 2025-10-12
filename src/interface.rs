@@ -27,27 +27,20 @@ impl CommandInterface {
         match tokens.next() {
             Some("ls") => {
                 let path = PathBuf::from(tokens.next().unwrap_or("."));
-                Ok(SftpCommand::Ls { path })
+                Ok(SftpCommand::Ls { path: Some(path) })
             }
             Some("cd") => {
                 let path = PathBuf::from(tokens.next().unwrap_or("~"));
-                Ok(SftpCommand::Cd { path })
+                Ok(SftpCommand::Cd { path: Some(path) })
             }
             Some("pwd") => Ok(SftpCommand::Pwd),
             Some("bye") => Ok(SftpCommand::Bye),
-            Some("help") => {
-                Self::print_help();
-                Ok(SftpCommand::Help)
-            }
+            Some("help") => Ok(SftpCommand::Help),
             Some(&_) => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Unknown command!",
             )),
             None => Err(io::Error::new(io::ErrorKind::InvalidInput, "No command")),
         }
-    }
-
-    fn print_help() {
-        println!("Available commands:\nls - list files in current directory\ncd - change current directory\nget - download file\nput - upload file\nbye - exit");
     }
 }

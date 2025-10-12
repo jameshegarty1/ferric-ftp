@@ -11,12 +11,35 @@ pub trait SftpPacketInfo {
 
 #[derive(Debug)]
 pub enum ClientPacket {
-    Init { version: u32 },
-    OpenDir { request_id: u32, path: String },
-    ReadDir { request_id: u32, handle: Vec<u8> },
-    Close { request_id: u32, handle: Vec<u8> },
-    RealPath { request_id: u32, path: String },
-    Stat { request_id: u32, path: String },
+    Init {
+        version: u32,
+    },
+    OpenDir {
+        request_id: u32,
+        path: String,
+    },
+    ReadDir {
+        request_id: u32,
+        handle: Vec<u8>,
+    },
+    Close {
+        request_id: u32,
+        handle: Vec<u8>,
+    },
+    RealPath {
+        request_id: u32,
+        path: String,
+    },
+    Stat {
+        request_id: u32,
+        path: String,
+    },
+    Open {
+        request_id: u32,
+        path: String,
+        pflags: u32,
+        attrs: FileAttributes,
+    },
 }
 
 #[derive(Debug)]
@@ -37,6 +60,10 @@ pub enum ServerPacket {
         status_code: u32,
         message: String,
     },
+    Attrs {
+        request_id: u32,
+        attrs: FileAttributes,
+    },
 }
 
 impl SftpPacketInfo for ClientPacket {
@@ -48,6 +75,7 @@ impl SftpPacketInfo for ClientPacket {
             ClientPacket::Close { .. } => SSH_FXP_CLOSE,
             ClientPacket::RealPath { .. } => SSH_FXP_REALPATH,
             ClientPacket::Stat { .. } => SSH_FXP_STAT,
+            ClientPacket::Open { .. } => SSH_FXP_OPEN,
         }
     }
 
@@ -59,6 +87,7 @@ impl SftpPacketInfo for ClientPacket {
             ClientPacket::Close { .. } => "SSH_FXP_CLOSE",
             ClientPacket::RealPath { .. } => "SSH_FXP_REALPATH",
             ClientPacket::Stat { .. } => "SSH_FXP_STAT",
+            ClientPacket::Open { .. } => "SSH_FXP_OPEN",
         }
     }
 }
@@ -70,6 +99,7 @@ impl SftpPacketInfo for ServerPacket {
             ServerPacket::Handle { .. } => SSH_FXP_HANDLE,
             ServerPacket::Name { .. } => SSH_FXP_NAME,
             ServerPacket::Status { .. } => SSH_FXP_STATUS,
+            ServerPacket::Attrs { .. } => SSH_FXP_ATTRS,
         }
     }
 
@@ -79,6 +109,7 @@ impl SftpPacketInfo for ServerPacket {
             ServerPacket::Handle { .. } => "SSH_FXP_HANDLE",
             ServerPacket::Name { .. } => "SSH_FXP_NAME",
             ServerPacket::Status { .. } => "SSH_FXP_STATUS",
+            ServerPacket::Attrs { .. } => "SSH_FXP_ATTRS",
         }
     }
 }
@@ -164,6 +195,27 @@ impl ClientPacket {
                 packet.extend(payload);
                 packet
             }
+            ClientPacket::Open {
+                request_id,
+                path,
+                pflags,
+                attrs,
+            } => {
+                let mut payload: Vec<u8> = Vec::new();
+                let mut packet: Vec<u8> = Vec::new();
+                payload.push(SSH_FXP_OPEN);
+                payload.extend_from_slice(&request_id.to_be_bytes());
+                payload.extend_from_slice(&path.len().to_be_bytes());
+                payload.extend_from_slice(path.as_bytes());
+                payload.extend_from_slice(&pflags.to_be_bytes());
+                //Implement attrs here
+                //
+                //
+                let length = payload.len() as u32;
+                packet.extend_from_slice(&length.to_be_bytes());
+                packet.extend(payload);
+                packet
+            }
         }
     }
 }
@@ -202,11 +254,11 @@ impl ServerPacket {
 
                 let mut files: Vec<FileInfo> = Vec::new();
                 for _ in 0..count {
-                    let short_name = session.read_string()?;
-                    let long_name = session.read_string()?;
-                    info!("Short name: {}", String::from_utf8_lossy(&short_name));
+                    let name = session.read_string()?;
+                    let display_name = session.read_string()?;
+                    info!("Short name: {}", String::from_utf8_lossy(&name));
 
-                    remaining_bytes -= 8 + short_name.len() + long_name.len();
+                    remaining_bytes -= 8 + name.len() + display_name.len();
 
                     let attr_flags = session.read_u32()?;
                     remaining_bytes -= 4;
@@ -216,9 +268,9 @@ impl ServerPacket {
                     remaining_bytes -= attrs_length;
 
                     let file = FileInfo {
-                        short_name: String::from_utf8(short_name)
+                        name: String::from_utf8(name)
                             .map_err(|e| SftpError::ClientError(e.into()))?,
-                        long_name: String::from_utf8(long_name)
+                        display_name: String::from_utf8(display_name)
                             .map_err(|e| SftpError::ClientError(e.into()))?,
                         attrs,
                     };
@@ -258,6 +310,19 @@ impl ServerPacket {
                     status_code,
                     message,
                 })
+            }
+            SSH_FXP_ATTRS => {
+                let request_id = session.read_u32()?;
+                remaining_bytes -= 4;
+
+                let attr_flags = session.read_u32()?;
+                remaining_bytes -= 4;
+
+                let (attrs_length, attrs): (usize, FileAttributes) =
+                    session.parse_file_attributes(&attr_flags)?;
+                remaining_bytes -= attrs_length;
+
+                Ok(ServerPacket::Attrs { request_id, attrs })
             }
             _ => Err(SftpError::ClientError(
                 std::io::Error::new(

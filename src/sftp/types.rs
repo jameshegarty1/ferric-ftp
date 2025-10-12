@@ -1,27 +1,13 @@
 use std::path::PathBuf;
-
-#[derive(Debug)]
-pub struct FileInfo {
-    pub short_name: String,
-    pub long_name: String,
-    pub attrs: FileAttributes,
-}
-
-#[derive(Debug, Default)]
-pub struct FileAttributes {
-    pub file_type: u8,
-    pub size: Option<u64>,
-    pub permissions: Option<u32>,
-    pub modify_time: Option<u32>,
-}
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug)]
 pub enum SftpCommand {
     Ls {
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
     Cd {
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
     Get {
         remote_path: PathBuf,
@@ -35,10 +21,41 @@ pub enum SftpCommand {
     Help,
     Bye,
 }
+#[derive(Debug, Clone)]
+pub struct FileInfo {
+    pub name: String,
+    pub display_name: String,
+    pub attrs: FileAttributes,
+}
 
-pub struct CommandOutput {
-    pub result: bool,
-    pub message: String,
+#[derive(Debug, Default, Clone)]
+pub struct FileAttributes {
+    pub size: Option<u64>,
+    pub permissions: Option<u32>,
+    pub modify_time: Option<u32>,
+    pub file_type: FileType,
+    pub is_directory: bool,
+    pub is_regular_file: bool,
+    pub is_symlink: bool,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub enum FileType {
+    #[default]
+    Unknown,
+    RegularFile,
+    Directory,
+    Symlink,
+    CharacterDevice,
+    BlockDevice,
+    Fifo,
+    Socket,
+}
+
+#[derive(Debug, Clone)]
+pub struct DirectoryCache {
+    pub files: Vec<FileInfo>,
+    pub timestamp: SystemTime,
 }
 
 #[repr(u8)]

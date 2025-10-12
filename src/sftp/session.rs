@@ -1,23 +1,23 @@
 use super::constants::*;
 use super::error::SftpError;
 use super::packet::ClientPacket;
-use super::types::FileAttributes;
+use super::types::{FileAttributes, FileType};
 use log::info;
 use ssh2::Channel;
-use std::collections::HashMap;
 use std::io::{Read, Write};
 
 pub struct SftpSession {
     pub channel: Channel,
     pub version: u32,
     pub next_request_id: u32,
-    pub handles: HashMap<String, Vec<u8>>,
 }
 
 impl SftpSession {
-    pub fn send_packet(&mut self, packet: ClientPacket) -> Result<(), std::io::Error> {
-        self.channel.write_all(&packet.to_bytes())?;
-        self.channel.flush()?;
+    pub fn send_packet(&mut self, packet: ClientPacket) -> Result<(), SftpError> {
+        self.channel
+            .write_all(&packet.to_bytes())
+            .map_err(|e| SftpError::IoError(e));
+        self.channel.flush().map_err(|e| SftpError::IoError(e));
         Ok(())
     }
 
@@ -94,13 +94,21 @@ impl SftpSession {
         }
 
         if flags & SSH_FILEXFER_ATTR_PERMISSIONS != 0 {
-            attrs.permissions = Some(self.read_u32()?);
+            let perms = self.read_u32()?;
+
+            attrs.permissions = Some(perms);
             len += 4;
             info!(
                 "  Permissions: 0o{:o} (0x{:x})",
                 attrs.permissions.unwrap(),
                 attrs.permissions.unwrap()
             );
+
+            attrs.file_type = Self::file_type_from_permissions(perms);
+            info!("  Type: {:?}", attrs.file_type);
+            attrs.is_directory = attrs.file_type == FileType::Directory;
+            attrs.is_regular_file = attrs.file_type == FileType::RegularFile;
+            attrs.is_symlink = attrs.file_type == FileType::Symlink;
         }
 
         if flags & SSH_FILEXFER_ATTR_ACMODTIME != 0 {
@@ -132,6 +140,19 @@ impl SftpSession {
 
         info!("Total attributes length: {}", len);
         Ok((len, attrs))
+    }
+
+    fn file_type_from_permissions(perms: u32) -> FileType {
+        match perms & S_IFMT {
+            S_IFDIR => FileType::Directory,
+            S_IFREG => FileType::RegularFile,
+            S_IFLNK => FileType::Symlink,
+            S_IFCHR => FileType::CharacterDevice,
+            S_IFBLK => FileType::BlockDevice,
+            S_IFIFO => FileType::Fifo,
+            S_IFSOCK => FileType::Socket,
+            _ => FileType::Unknown,
+        }
     }
 
     pub fn debug_peek_bytes(&mut self, count: usize) -> Result<Vec<u8>, SftpError> {

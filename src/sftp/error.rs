@@ -1,6 +1,14 @@
 #[derive(Debug)]
 pub enum SftpError {
-    ServerError { code: u32, message: String },
+    IoError(std::io::Error),
+    ServerError {
+        code: u32,
+        request_id: u32,
+        message: String,
+    },
     ClientError(Box<dyn std::error::Error>),
-    UnknownError { message: String },
+    NotADirectory(String),
+    UnexpectedPacket(&'static str),
+    UnexpectedResponse(&'static str),
+    UnknownError,
 }
