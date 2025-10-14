@@ -437,6 +437,47 @@ impl ServerPacket {
 
                 Ok(ServerPacket::Name { request_id, files })
             }
+
+            SSH_FXP_STATUS => {
+                let request_id = reader.read_u32()?;
+                remaining_bytes -= 4;
+
+                let status_code = reader.read_u32()?;
+
+                info!(
+                    "Status Response to request_id: {} with code: {}",
+                    request_id, status_code
+                );
+                remaining_bytes -= 4;
+
+                let message = String::from_utf8(reader.read_string()?)
+                    .map_err(|e| SftpError::ClientError(e.into()))?;
+
+                remaining_bytes -= 1 + message.len();
+
+                let lang = reader.read_string()?;
+
+                remaining_bytes -= 1 + lang.len();
+
+                Ok(ServerPacket::Status {
+                    request_id,
+                    status_code,
+                    message,
+                })
+            }
+            SSH_FXP_ATTRS => {
+                let request_id = reader.read_u32()?;
+                remaining_bytes -= 4;
+
+                let attr_flags = reader.read_u32()?;
+                remaining_bytes -= 4;
+
+                let (attrs_length, attrs): (usize, FileAttributes) =
+                    reader.parse_file_attributes(&attr_flags)?;
+                remaining_bytes -= attrs_length;
+
+                Ok(ServerPacket::Attrs { request_id, attrs })
+            }
             // ... other packet types (copy from your existing from_session)
             _ => Err(SftpError::ClientError(
                 std::io::Error::new(

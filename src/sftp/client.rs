@@ -137,6 +137,7 @@ impl SftpClient {
     }
 
     pub fn execute_command(&mut self, cmd: &SftpCommand) -> Result<bool, SftpError> {
+        info!("Executing command: {:?}", cmd);
         match cmd {
             SftpCommand::Ls { path } => {
                 self.list_directory(path.as_ref())?;

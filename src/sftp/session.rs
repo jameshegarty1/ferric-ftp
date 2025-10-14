@@ -81,16 +81,13 @@ impl SftpSession {
         if flags & SSH_FILEXFER_ATTR_SIZE != 0 {
             attrs.size = Some(self.read_u64()?);
             len += 8;
-            info!("  Size: {:?}", attrs.size);
         }
 
         if flags & SSH_FILEXFER_ATTR_UIDGID != 0 {
             let uid = self.read_u32()?;
             len += 4;
-            info!("  UID: {}", uid);
             let gid = self.read_u32()?;
             len += 4;
-            info!("  GID: {}", gid);
         }
 
         if flags & SSH_FILEXFER_ATTR_PERMISSIONS != 0 {
@@ -98,14 +95,8 @@ impl SftpSession {
 
             attrs.permissions = Some(perms);
             len += 4;
-            info!(
-                "  Permissions: 0o{:o} (0x{:x})",
-                attrs.permissions.unwrap(),
-                attrs.permissions.unwrap()
-            );
 
             attrs.file_type = Self::file_type_from_permissions(perms);
-            info!("  Type: {:?}", attrs.file_type);
             attrs.is_directory = attrs.file_type == FileType::Directory;
             attrs.is_regular_file = attrs.file_type == FileType::RegularFile;
             attrs.is_symlink = attrs.file_type == FileType::Symlink;
@@ -114,31 +105,21 @@ impl SftpSession {
         if flags & SSH_FILEXFER_ATTR_ACMODTIME != 0 {
             let atime = self.read_u32()?;
             len += 4;
-            info!("  Access time: {}", atime);
             attrs.modify_time = Some(self.read_u32()?);
             len += 4;
-            info!("  Modify time: {:?}", attrs.modify_time);
         }
 
         if flags & SSH_FILEXFER_ATTR_EXTENDED != 0 {
             let extended_count = self.read_u32()?;
             len += 4;
-            info!("  Extended attributes count: {}", extended_count);
 
-            for i in 0..extended_count {
+            for _ in 0..extended_count {
                 let name = self.read_string()?;
                 let value = self.read_string()?;
                 len += 8 + name.len() + value.len();
-                info!(
-                    "    Extended[{}]: {} = {}",
-                    i,
-                    String::from_utf8_lossy(&name),
-                    String::from_utf8_lossy(&value)
-                );
             }
         }
 
-        info!("Total attributes length: {}", len);
         Ok((len, attrs))
     }
 

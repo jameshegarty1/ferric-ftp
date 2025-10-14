@@ -60,6 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if !success {
                             break;
                         }
+                        continue;
                     }
                     Err(e) => {
                         error!("Failed to execute command: {:?}", e);
