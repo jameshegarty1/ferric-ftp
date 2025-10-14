@@ -7,3 +7,6 @@ pub mod types;
 
 pub use client::SftpClient;
 pub use types::SftpCommand;
+
+#[cfg(test)]
+pub mod test_utils;
