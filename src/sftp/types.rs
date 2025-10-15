@@ -1,6 +1,12 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use ssh2::File;
+
+use crate::sftp::constants::{
+    SSH_FILEXFER_ATTR_ACMODTIME, SSH_FILEXFER_ATTR_PERMISSIONS, SSH_FILEXFER_ATTR_SIZE,
+};
+
 #[derive(Debug)]
 pub enum SftpCommand {
     Ls {
@@ -37,6 +43,41 @@ pub struct FileAttributes {
     pub is_directory: bool,
     pub is_regular_file: bool,
     pub is_symlink: bool,
+}
+
+impl FileAttributes {
+    pub fn exists(&self) -> bool {
+        self.size.is_some() && self.permissions.is_some() && self.modify_time.is_some()
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut flags = 0u32;
+
+        if self.size.is_some() {
+            flags |= SSH_FILEXFER_ATTR_SIZE;
+        }
+        if self.permissions.is_some() {
+            flags |= SSH_FILEXFER_ATTR_PERMISSIONS;
+        }
+        if self.modify_time.is_some() {
+            flags |= SSH_FILEXFER_ATTR_ACMODTIME;
+        }
+
+        bytes.extend_from_slice(&flags.to_be_bytes());
+
+        if let Some(size) = self.size {
+            bytes.extend_from_slice(&size.to_be_bytes());
+        }
+        if let Some(perms) = self.permissions {
+            bytes.extend_from_slice(&perms.to_be_bytes());
+        }
+        if let Some(mtime) = self.modify_time {
+            bytes.extend_from_slice(&mtime.to_be_bytes());
+        }
+
+        bytes
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]

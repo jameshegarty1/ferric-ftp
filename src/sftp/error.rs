@@ -14,6 +14,7 @@ pub enum SftpError {
     UnexpectedResponse(&'static str),
     UnknownError,
     UnexpectedCommand,
+    InvalidCommand(&'static str),
 }
 
 // Implement Display for SftpError
@@ -36,6 +37,7 @@ impl fmt::Display for SftpError {
             SftpError::UnexpectedResponse(msg) => write!(f, "Unexpected response: {}", msg),
             SftpError::UnknownError => write!(f, "Unknown error"),
             SftpError::UnexpectedCommand => write!(f, "Unexpected command"),
+            SftpError::InvalidCommand(msg) => write!(f, "Invalid command: {}", msg),
         }
     }
 }

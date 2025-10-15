@@ -1,12 +1,9 @@
-use crate::sftp::types::FileAttributes;
-
 use super::error::SftpError;
-use super::session::TransportLayer;
-
-use super::types::{FileInfo, SftpStatus};
-
 use super::packet::{ClientPacket, ServerPacket};
-use std::path::PathBuf;
+use super::session::TransportLayer;
+use super::types::FileAttributes;
+use super::types::{FileInfo, SftpStatus};
+use log::info;
 
 pub struct SftpProtocol<T: TransportLayer> {
     transport: T,
@@ -144,5 +141,78 @@ impl<T: TransportLayer> SftpProtocol<T> {
         }
     }
 
-    // Add similar methods for stat, open file, read file, etc.
+    pub fn open(&mut self, path: &str, pflags: u32) -> Result<Vec<u8>, SftpError> {
+        let request_id = self.transport.next_request_id();
+        let packet = ClientPacket::Open {
+            request_id,
+            path: path.to_string(),
+            pflags,
+            attrs: FileAttributes::default(),
+        };
+
+        self.transport.send_packet(packet)?;
+
+        match self.transport.receive_packet()? {
+            ServerPacket::Handle { handle, .. } => Ok(handle),
+            ServerPacket::Status {
+                status_code,
+                request_id,
+                message,
+            } => Err(SftpError::ServerError {
+                code: status_code,
+                request_id,
+                message,
+            }),
+            _ => Err(SftpError::UnexpectedPacket("OpenDir response")),
+        }
+    }
+
+    pub fn read(&mut self, handle: &[u8]) -> Result<(), SftpError> {
+        let mut offset: u64 = 0;
+        let chunk_size: u32 = 32768;
+        let mut result: Vec<u8> = Vec::new();
+        loop {
+            let request_id = self.transport.next_request_id();
+            let packet = ClientPacket::Read {
+                request_id,
+                handle: handle.to_vec(),
+                offset,
+                len: chunk_size,
+            };
+
+            self.transport.send_packet(packet)?;
+
+            match self.transport.receive_packet()? {
+                ServerPacket::Data { data, .. } => {
+                    let data_len = data.len() as u64;
+                    result.extend_from_slice(&data);
+
+                    if data_len < chunk_size as u64 {
+                        break;
+                    }
+                    offset += data_len;
+                }
+                ServerPacket::Status {
+                    status_code,
+                    request_id,
+                    message,
+                } => {
+                    if status_code == SftpStatus::Eof as u32 {
+                        break;
+                    } else {
+                        return Err(SftpError::ServerError {
+                            code: status_code,
+                            request_id,
+                            message,
+                        });
+                    }
+                }
+                _ => {
+                    return Err(SftpError::UnexpectedPacket("Read response"));
+                }
+            }
+        }
+        info!("File data: {:?}", String::from_utf8_lossy(&result));
+        Ok(())
+    }
 }

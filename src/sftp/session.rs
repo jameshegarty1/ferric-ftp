@@ -4,7 +4,6 @@ use super::packet::{ClientPacket, ServerPacket};
 use super::types::{FileAttributes, FileType};
 use log::info;
 use ssh2::Channel;
-use std::collections::VecDeque;
 use std::io::{Read, Write};
 
 pub struct SftpSession {
@@ -62,8 +61,8 @@ impl SftpSession {
     pub fn send_packet(&mut self, packet: ClientPacket) -> Result<(), SftpError> {
         self.channel
             .write_all(&packet.to_bytes())
-            .map_err(|e| SftpError::IoError(e));
-        self.channel.flush().map_err(|e| SftpError::IoError(e));
+            .map_err(|e| SftpError::IoError(e))?;
+        self.channel.flush().map_err(|e| SftpError::IoError(e))?;
         Ok(())
     }
 
@@ -200,7 +199,7 @@ mod tests {
     };
 
     use super::*;
-    use std::path::PathBuf;
+    use std::{collections::VecDeque, path::PathBuf};
 
     struct MockTransport {
         expected_requests: VecDeque<ClientPacket>,

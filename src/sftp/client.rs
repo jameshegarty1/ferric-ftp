@@ -158,20 +158,21 @@ impl<T: TransportLayer> SftpClient<T> {
     }
 
     fn change_directory(&mut self, path: Option<&PathBuf>) -> Result<(), SftpError> {
-        let path_str = match path {
-            Some(p) => p.to_str(),
-            None => Some("/"),
-        }
-        .ok_or_else(|| SftpError::ClientError("Invalid UTF-8 in path".into()))?;
+        let target_path = match path {
+            Some(p) => self.resolve_path(p),
+            None => self.working_dir.clone(),
+        };
 
-        let resolved_path = self.protocol.realpath(path_str)?;
+        let path_str = target_path
+            .to_str()
+            .ok_or_else(|| SftpError::ClientError("Invalid UTF-8 in path".into()))?;
 
-        let attrs = self.protocol.stat(&resolved_path)?;
+        let attrs = self.protocol.stat(&path_str)?;
         if !attrs.is_directory {
-            return Err(SftpError::NotADirectory(resolved_path));
+            return Err(SftpError::NotADirectory(path_str.to_string()));
         }
 
-        self.working_dir = PathBuf::from(resolved_path);
+        self.working_dir = PathBuf::from(path_str);
         self.current_listing.clear();
         Ok(())
     }
@@ -198,86 +199,18 @@ impl<T: TransportLayer> SftpClient<T> {
         remote_path: &PathBuf,
         local_path: Option<&PathBuf>,
     ) -> Result<(), SftpError> {
-        todo!()
-    }
+        let target_path = self.resolve_path(remote_path);
 
-    /*
-    fn get_file_handle(&mut self, path: &PathBuf) -> Result<Vec<u8>, SftpError> {
-        let path_str = path
+        let path_str = target_path
             .to_str()
             .ok_or_else(|| SftpError::ClientError("Invalid UTF-8 in path".into()))?;
 
-        if let Some(handle) = self.handles.get(path_str) {
-            return Ok(handle.clone());
-        }
+        let file_handle = self.protocol.open(path_str, SSH_FXF_READ)?;
 
-        let open_packet = ClientPacket::Open {
-            request_id: self.session.next_request_id,
-            path: path_str.to_string(),
-            pflags: SSH_FXF_READ,
-            attrs: FileAttributes::default(),
-        };
-        self.session.send_packet(open_packet)?;
-        self.session.next_request_id += 1;
+        let data = self.protocol.read(&file_handle);
 
-        let response = ServerPacket::from_session(&mut self.session)?;
-        match response {
-            ServerPacket::Handle { handle, .. } => {
-                self.handles.insert(path_str.to_string(), handle.clone());
-                Ok(handle)
-            }
-            ServerPacket::Status {
-                status_code,
-                request_id,
-                message,
-            } => Err(SftpError::ServerError {
-                code: status_code,
-                request_id,
-                message,
-            }),
-            _ => Err(SftpError::UnexpectedPacket("Stat response")),
-        }
-    }
-    fn close_handle(&mut self, path: &str) -> Result<(), SftpError> {
-        if let Some(handle) = self.handles.remove(path) {
-            let close_packet = ClientPacket::Close {
-                request_id: self.session.next_request_id,
-                handle,
-            };
-            self.session.send_packet(close_packet)?;
-            self.session.next_request_id += 1;
+        info!("Got data {:?}", data);
 
-            let _ = ServerPacket::from_session(&mut self.session);
-        }
         Ok(())
     }
-
-    fn stat(&mut self, path: &PathBuf) -> Result<FileAttributes, SftpError> {
-        let path_str = path
-            .to_str()
-            .ok_or_else(|| SftpError::ClientError("Invalid UTF-8 in path".into()))?;
-
-        let stat_packet = ClientPacket::Stat {
-            request_id: self.session.next_request_id,
-            path: path_str.to_string(),
-        };
-        self.session.send_packet(stat_packet)?;
-        self.session.next_request_id += 1;
-
-        let response = ServerPacket::from_session(&mut self.session)?;
-        match response {
-            ServerPacket::Attrs { attrs, .. } => Ok(attrs),
-            ServerPacket::Status {
-                status_code,
-                request_id,
-                message,
-            } => Err(SftpError::ServerError {
-                code: status_code,
-                request_id,
-                message,
-            }),
-            _ => Err(SftpError::UnexpectedPacket("Stat response")),
-        }
-    }
-    */
 }

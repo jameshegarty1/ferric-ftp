@@ -40,6 +40,12 @@ pub enum ClientPacket {
         pflags: u32,
         attrs: FileAttributes,
     },
+    Read {
+        request_id: u32,
+        handle: Vec<u8>,
+        offset: u64,
+        len: u32,
+    },
 }
 
 #[derive(Debug)]
@@ -64,6 +70,10 @@ pub enum ServerPacket {
         request_id: u32,
         attrs: FileAttributes,
     },
+    Data {
+        request_id: u32,
+        data: Vec<u8>,
+    },
 }
 
 impl SftpPacketInfo for ClientPacket {
@@ -76,6 +86,7 @@ impl SftpPacketInfo for ClientPacket {
             ClientPacket::RealPath { .. } => SSH_FXP_REALPATH,
             ClientPacket::Stat { .. } => SSH_FXP_STAT,
             ClientPacket::Open { .. } => SSH_FXP_OPEN,
+            ClientPacket::Read { .. } => SSH_FXP_READ,
         }
     }
 
@@ -88,6 +99,7 @@ impl SftpPacketInfo for ClientPacket {
             ClientPacket::RealPath { .. } => "SSH_FXP_REALPATH",
             ClientPacket::Stat { .. } => "SSH_FXP_STAT",
             ClientPacket::Open { .. } => "SSH_FXP_OPEN",
+            ClientPacket::Read { .. } => "SSH_FXP_READ",
         }
     }
 }
@@ -100,6 +112,7 @@ impl SftpPacketInfo for ServerPacket {
             ServerPacket::Name { .. } => SSH_FXP_NAME,
             ServerPacket::Status { .. } => SSH_FXP_STATUS,
             ServerPacket::Attrs { .. } => SSH_FXP_ATTRS,
+            ServerPacket::Data { .. } => SSH_FXP_DATA,
         }
     }
 
@@ -110,6 +123,7 @@ impl SftpPacketInfo for ServerPacket {
             ServerPacket::Name { .. } => "SSH_FXP_NAME",
             ServerPacket::Status { .. } => "SSH_FXP_STATUS",
             ServerPacket::Attrs { .. } => "SSH_FXP_ATTRS",
+            ServerPacket::Data { .. } => "SSH_FXP_DATA",
         }
     }
 }
@@ -320,6 +334,10 @@ impl ClientPacket {
         payload.extend_from_slice(&num.to_be_bytes());
     }
 
+    fn add_u64(&self, payload: &mut Vec<u8>, num: &u64) {
+        payload.extend_from_slice(&num.to_be_bytes());
+    }
+
     fn add_string(&self, payload: &mut Vec<u8>, string: &str) {
         payload.extend_from_slice(&(string.len() as u32).to_be_bytes());
         payload.extend_from_slice(string.as_bytes());
@@ -368,9 +386,24 @@ impl ClientPacket {
                 self.add_u32(&mut payload, request_id);
                 self.add_string(&mut payload, path);
                 self.add_u32(&mut payload, pflags);
-                //Implement attrs here
-                //
-                //
+
+                if attrs.exists() {
+                    let attrs_bytes = attrs.to_bytes();
+                    self.add_bytes(&mut payload, &attrs_bytes);
+                } else {
+                    self.add_u32(&mut payload, &0u32);
+                }
+            }
+            ClientPacket::Read {
+                request_id,
+                handle,
+                offset,
+                len,
+            } => {
+                self.add_u32(&mut payload, request_id);
+                self.add_bytes(&mut payload, handle);
+                self.add_u64(&mut payload, offset);
+                self.add_u32(&mut payload, len);
             }
         }
         self.add_header(payload)
@@ -478,6 +511,15 @@ impl ServerPacket {
 
                 Ok(ServerPacket::Attrs { request_id, attrs })
             }
+            SSH_FXP_DATA => {
+                let request_id = reader.read_u32()?;
+                remaining_bytes -= 4;
+
+                let data = reader.read_string()?;
+
+                Ok(ServerPacket::Data { request_id, data })
+            }
+
             // ... other packet types (copy from your existing from_session)
             _ => Err(SftpError::ClientError(
                 std::io::Error::new(
@@ -541,6 +583,18 @@ mod tests {
 
         let field_data = &bytes[data_start..data_start + field_len];
         assert_eq!(field_data, expected_value);
+    }
+
+    fn assert_u32_field(bytes: &[u8], start_index: usize, expected_value: u32) {
+        let field_data = &bytes[start_index..start_index + 4];
+        let actual_value = u32::from_be_bytes(field_data.try_into().unwrap());
+        assert_eq!(actual_value, expected_value);
+    }
+
+    fn assert_u64_field(bytes: &[u8], start_index: usize, expected_value: u64) {
+        let field_data = &bytes[start_index..start_index + 8];
+        let actual_value = u64::from_be_bytes(field_data.try_into().unwrap());
+        assert_eq!(actual_value, expected_value);
     }
 
     fn create_test_attrs() -> FileAttributes {
@@ -670,6 +724,46 @@ mod tests {
         assert_packet_type(&bytes, SSH_FXP_STAT);
         assert_request_id(&bytes, 100);
         assert_string_field(&bytes, 9, "/home");
+    }
+
+    #[test]
+    fn test_client_packet_open() {
+        let open = ClientPacket::Open {
+            request_id: 100,
+            path: "/home".to_string(),
+            pflags: SSH_FXF_READ,
+            attrs: FileAttributes::default(),
+        };
+        let bytes = open.to_bytes();
+
+        assert_packet_length(&bytes, 22); // 1 + 4 + 4 + 5 + 4 + 4 = 22
+        assert_packet_type(&bytes, SSH_FXP_OPEN);
+        assert_request_id(&bytes, 100);
+        assert_string_field(&bytes, 9, "/home");
+        assert_u32_field(&bytes, 18, SSH_FXF_READ);
+        assert_u32_field(&bytes, 22, 0);
+    }
+
+    #[test]
+    fn test_client_packet_read() {
+        let handle = vec![0x01, 0x02, 0x03];
+        let chunk_size: u32 = 32768;
+        let offset: u64 = 0;
+
+        let read = ClientPacket::Read {
+            request_id: 100,
+            handle: handle.clone(),
+            offset,
+            len: chunk_size,
+        };
+        let bytes = read.to_bytes();
+
+        assert_packet_length(&bytes, 24); // 1 + 4 + 4 + 3 + 8 + 4 = 24
+        assert_packet_type(&bytes, SSH_FXP_READ);
+        assert_request_id(&bytes, 100);
+        assert_bytes_field(&bytes, 9, &handle);
+        assert_u64_field(&bytes, 16, offset);
+        assert_u32_field(&bytes, 24, chunk_size);
     }
 
     //#[test]

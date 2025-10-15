@@ -1,6 +1,7 @@
+use crate::sftp::error::SftpError;
 use crate::sftp::SftpCommand;
 use std::io;
-use std::io::*;
+use std::io::prelude::*;
 use std::path::PathBuf;
 
 const PROMPT: &str = "🦀sftp > ";
@@ -14,16 +15,21 @@ impl CommandInterface {
         println!("Welcome to Rust SFTP Client! 🦀");
     }
 
-    pub fn parse_next_input() -> Result<SftpCommand> {
+    pub fn parse_next_input() -> Result<SftpCommand, SftpError> {
         print!("{}", PROMPT);
-        io::stdout().flush()?;
+        io::stdout()
+            .flush()
+            .map_err(|e| SftpError::IoError(e.into()));
 
         let mut input_buffer = String::new();
-        io::stdin().read_line(&mut input_buffer)?;
+        io::stdin()
+            .read_line(&mut input_buffer)
+            .map_err(|e| SftpError::IoError(e.into()));
+
         Self::parse_input(&input_buffer)
     }
 
-    pub fn parse_input(input: &str) -> Result<SftpCommand> {
+    pub fn parse_input(input: &str) -> Result<SftpCommand, SftpError> {
         let mut tokens = input.trim().split_whitespace();
 
         match tokens.next() {
@@ -35,14 +41,25 @@ impl CommandInterface {
                 let path = PathBuf::from(tokens.next().unwrap_or("/"));
                 Ok(SftpCommand::Cd { path: Some(path) })
             }
+            Some("get") => {
+                let remote_path = PathBuf::from(
+                    tokens
+                        .next()
+                        .ok_or(SftpError::InvalidCommand("Missing remote path"))?,
+                );
+
+                let local_path = tokens.next().map(PathBuf::from);
+
+                Ok(SftpCommand::Get {
+                    remote_path,
+                    local_path,
+                })
+            }
             Some("pwd") => Ok(SftpCommand::Pwd),
             Some("bye") => Ok(SftpCommand::Bye),
             Some("help") => Ok(SftpCommand::Help),
-            Some(&_) => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Unknown command!",
-            )),
-            None => Err(io::Error::new(io::ErrorKind::InvalidInput, "No command")),
+            Some(cmd) => Err(SftpError::UnexpectedCommand),
+            None => Err(SftpError::InvalidCommand("Empty command")),
         }
     }
 }

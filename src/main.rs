@@ -6,7 +6,6 @@ use interface::CommandInterface;
 use log::{error, info, LevelFilter};
 use ssh2::Session;
 use std::net::TcpStream;
-use std::process::exit;
 
 mod interface;
 mod sftp;
@@ -41,9 +40,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut channel = session.channel_session()?;
     channel.subsystem("sftp")?;
-    let sftp_session = SftpSession::new(channel, SFTP_SUPPORTED_VERSION)?;
-
-    let mut sftp_client = SftpClient::new(sftp_session, None)?;
+    let mut sftp_client =
+        SftpClient::new(SftpSession::new(channel, SFTP_SUPPORTED_VERSION)?, None)?;
 
     CommandInterface::greet();
 
@@ -64,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            Err(_) => {
+            Err(SftpError) => {
                 println!("Error parsing command!");
             }
         }
