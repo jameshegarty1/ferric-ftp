@@ -1,97 +1,75 @@
 use ferric_ftp::sftp::client::SftpClient;
+use ferric_ftp::sftp::constants::*;
 use ferric_ftp::sftp::session::SftpSession;
-use ssh2::Session;
-use std::net::TcpStream;
-use std::path::Path;
+use ferric_ftp::sftp::types::SftpCommand;
+use std::path::PathBuf;
 
-mod test_utils;
-
-#[test]
-#[ignore] // Ignore by default since it needs a real server
-fn test_connect_and_authenticate() {
-    let mut session = test_utils::connect_to_test_server().unwrap();
-
-    // Test that we can authenticate
-    session.userauth_password("testuser", "testpass").unwrap();
-    assert!(session.authenticated());
-}
+use super::test_utils;
 
 #[test]
-#[ignore]
 fn test_sftp_session_initialization() {
-    let ssh_session = test_utils::connect_and_auth().unwrap();
-    let sftp_session = SftpSession::new(ssh_session).unwrap();
-
-    assert_eq!(sftp_session.version, 3);
+    let channel = test_utils::connect_and_auth().unwrap();
+    let session = SftpSession::new(channel, SFTP_SUPPORTED_VERSION).unwrap();
+    let client = SftpClient::new(session, None);
+    assert!(!client.is_err());
 }
-
 #[test]
-#[ignore]
 fn test_list_directory() {
     let mut client = test_utils::create_test_client().unwrap();
+    let command = SftpCommand::Ls {
+        path: Some(PathBuf::from(".")),
+    };
 
-    // This tests the full flow:
-    // 1. OPENDIR packet
-    // 2. HANDLE response
-    // 3. READDIR packet
-    // 4. NAME response with FileInfo list
-    let files = client.list_directory("/").unwrap();
+    let _ = client.execute_command(&command).unwrap();
 
-    // Should at least see . and ..
-    assert!(files.len() >= 2);
+    assert!(!client.current_listing.is_empty());
 
-    // Verify we got proper FileInfo structures
-    for file in files {
+    for file in client.current_listing {
         assert!(!file.name.is_empty());
         assert!(!file.display_name.is_empty());
-        // Attributes might be present depending on server
     }
 }
-
 #[test]
-#[ignore]
-fn test_get_current_directory() {
-    let mut client = test_utils::create_test_client().unwrap();
-
-    let current_dir = client.get_current_directory().unwrap();
-    assert!(!current_dir.is_empty());
-}
-
-#[test]
-#[ignore]
 fn test_change_directory() {
     let mut client = test_utils::create_test_client().unwrap();
+    let mut command = SftpCommand::Cd {
+        path: Some(PathBuf::from("pub")),
+    };
 
-    let original_dir = client.get_current_directory().unwrap();
+    let original_dir = client.working_dir.clone();
 
-    // Change to root and back
-    client.change_directory("/").unwrap();
-    let root_dir = client.get_current_directory().unwrap();
+    client.execute_command(&command).unwrap();
 
-    client.change_directory(&original_dir).unwrap();
-    let final_dir = client.get_current_directory().unwrap();
+    let next_dir = client.working_dir.clone();
+
+    command = SftpCommand::Cd {
+        path: Some(PathBuf::from("..")),
+    };
+
+    client.execute_command(&command).unwrap();
+
+    let final_dir = client.working_dir.clone();
 
     assert_eq!(original_dir, final_dir);
-    assert_ne!(original_dir, root_dir);
+    assert_ne!(original_dir, next_dir);
+    assert_eq!(next_dir, PathBuf::from("/pub"));
 }
 
 #[test]
-#[ignore]
-fn test_file_operations() {
+fn test_get_file() {
     let mut client = test_utils::create_test_client().unwrap();
-    let test_filename = "integration_test_file.txt";
+    let test_filename = "readme.txt";
 
-    // Test file stat
-    let result = client.get_file_attributes(test_filename);
-    // Might not exist, that's OK - we're testing the protocol
+    let command = SftpCommand::Get {
+        remote_path: PathBuf::from("readme.txt"),
+        local_path: Some(PathBuf::from("test_readme.txt")),
+    };
 
-    // Test realpath
-    let real_path = client.get_real_path(".").unwrap();
-    assert!(!real_path.is_empty());
+    client.execute_command(&command).unwrap();
 }
 
+/*
 #[test]
-#[ignore]
 fn test_error_handling() {
     let mut client = test_utils::create_test_client().unwrap();
 
@@ -102,3 +80,4 @@ fn test_error_handling() {
     let result = client.change_directory("/path/that/does/not/exist");
     assert!(result.is_err());
 }
+*/

@@ -496,7 +496,6 @@ impl ServerPacket {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sftp::test_utils::MockSession;
 
     fn assert_packet_length(bytes: &[u8], expected_payload_length: usize) {
         let length = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);

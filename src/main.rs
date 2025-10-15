@@ -1,4 +1,5 @@
 use crate::sftp::constants::*;
+use crate::sftp::session::SftpSession;
 use crate::sftp::{SftpClient, SftpCommand};
 use env_logger::Builder;
 use interface::CommandInterface;
@@ -40,13 +41,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut channel = session.channel_session()?;
     channel.subsystem("sftp")?;
+    let sftp_session = SftpSession::new(channel, SFTP_SUPPORTED_VERSION)?;
 
-    let mut sftp_client = if let Ok(client) = SftpClient::new(channel, SFTP_SUPPORTED_VERSION) {
-        client
-    } else {
-        error!("SFTP error: failed to create client");
-        exit(1);
-    };
+    let mut sftp_client = SftpClient::new(sftp_session, None)?;
 
     CommandInterface::greet();
 

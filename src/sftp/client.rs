@@ -2,102 +2,34 @@ use super::constants::*;
 use super::error::SftpError;
 use super::packet::ClientPacket;
 use super::packet::ServerPacket;
-use super::session::SftpSession;
+use super::session::TransportLayer;
 use super::types::{DirectoryCache, FileAttributes, FileInfo, SftpCommand, SftpStatus};
+use crate::sftp::protocol::SftpProtocol;
 use log::info;
-use ssh2::Channel;
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-pub struct SftpClient {
-    pub session: SftpSession,
+pub struct SftpClient<T: TransportLayer> {
+    protocol: SftpProtocol<T>,
     pub working_dir: PathBuf,
     pub directory_cache: HashMap<PathBuf, DirectoryCache>,
     pub current_listing: Vec<FileInfo>,
     pub handles: HashMap<String, Vec<u8>>,
 }
 
-impl SftpClient {
-    pub fn new(mut channel: Channel, version: u32) -> Result<Self, SftpError> {
-        // Initialise connection
-        let init_packet = ClientPacket::Init { version };
-        channel
-            .write_all(&init_packet.to_bytes())
-            .map_err(|e| SftpError::ClientError(e.into()))?;
+impl<T: TransportLayer> SftpClient<T> {
+    pub fn new(transport: T, initial_path: Option<&str>) -> Result<Self, SftpError> {
+        let mut protocol = SftpProtocol::new(transport);
+        let working_dir = PathBuf::from(protocol.realpath(initial_path.unwrap_or("/"))?);
 
-        let mut session = SftpSession {
-            channel,
-            version,
-            next_request_id: 0,
-        };
-
-        // Handle Init reponse
-        match ServerPacket::from_session(&mut session)? {
-            // Successful Init
-            ServerPacket::Version { version: _ } => {
-                // Initialize working dir with a RealPath request
-                let mut working_dir: PathBuf = PathBuf::new();
-                let realpath_packet = ClientPacket::RealPath {
-                    request_id: session.next_request_id,
-                    path: ".".to_string(),
-                };
-                session.next_request_id += 1;
-                session.send_packet(realpath_packet)?;
-
-                match ServerPacket::from_session(&mut session)? {
-                    ServerPacket::Name { request_id, files } => {
-                        if files.len() == 1 {
-                            working_dir = PathBuf::from(&files[0].name);
-                            info!("Initialized working directory: {}", working_dir.display());
-                        } else {
-                            return Err(SftpError::ClientError(
-                                std::io::Error::new(
-                                    std::io::ErrorKind::Other,
-                                    "Unexpected number of paths in realpath response",
-                                )
-                                .into(),
-                            ));
-                        }
-                    }
-                    ServerPacket::Status {
-                        status_code,
-                        message,
-                        request_id,
-                    } => {
-                        return Err(SftpError::ServerError {
-                            code: status_code,
-                            request_id,
-                            message,
-                        });
-                    }
-                    _ => {
-                        return Err(SftpError::ClientError(
-                            std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                "Unexpected response type for realpath",
-                            )
-                            .into(),
-                        ));
-                    }
-                }
-                Ok(SftpClient {
-                    session,
-                    working_dir,
-                    directory_cache: HashMap::new(),
-                    current_listing: Vec::new(),
-                    handles: HashMap::new(),
-                })
-            }
-            _ => Err(SftpError::ClientError(
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "SFTP error when creating SFTP session",
-                )
-                .into(),
-            )),
-        }
+        Ok(Self {
+            protocol,
+            working_dir,
+            directory_cache: HashMap::new(),
+            current_listing: Vec::new(),
+            handles: HashMap::new(),
+        })
     }
 
     pub fn resolve_path(&self, path: &PathBuf) -> PathBuf {
@@ -189,106 +121,9 @@ impl SftpClient {
             .to_str()
             .ok_or_else(|| SftpError::ClientError("Invalid UTF-8 in path".into()))?;
 
-        let opendir_packet = ClientPacket::OpenDir {
-            request_id: self.session.next_request_id,
-            path: path_str.to_string(),
-        };
-
-        self.session.send_packet(opendir_packet)?;
-        self.session.next_request_id += 1;
-
-        let opendir_response_packet = ServerPacket::from_session(&mut self.session)?;
-
-        let handle = match opendir_response_packet {
-            ServerPacket::Handle { request_id, handle } => {
-                self.handles.insert(path_str.to_string(), handle.clone());
-                handle
-            }
-            ServerPacket::Status {
-                status_code,
-                message,
-                request_id,
-            } => {
-                return Err(SftpError::ServerError {
-                    code: status_code,
-                    request_id,
-                    message,
-                });
-            }
-            _ => {
-                return Err(SftpError::UnexpectedPacket(
-                    "Unexpected packet while getting directory handle.",
-                ))
-            }
-        };
-
-        // Parse response into a vector of FileInfos
-        let mut files = Vec::new();
-        loop {
-            let readdir_packet = ClientPacket::ReadDir {
-                request_id: self.session.next_request_id,
-                handle: handle.clone(),
-            };
-
-            self.session.send_packet(readdir_packet)?;
-            self.session.next_request_id += 1;
-
-            let readdir_response_packet = ServerPacket::from_session(&mut self.session)?;
-
-            match readdir_response_packet {
-                ServerPacket::Name {
-                    request_id,
-                    files: names,
-                } => {
-                    files.extend(names);
-                }
-                ServerPacket::Status {
-                    request_id,
-                    status_code,
-                    message,
-                } => {
-                    if status_code == SftpStatus::Eof as u32 {
-                        break;
-                    } else {
-                        return Err(SftpError::ServerError {
-                            code: status_code,
-                            request_id,
-                            message,
-                        });
-                    }
-                }
-                _ => {
-                    return Err(SftpError::UnexpectedPacket(
-                        "Unexpected packet when reading directory.",
-                    ))
-                }
-            }
-        }
-
-        let close_packet = ClientPacket::Close {
-            request_id: self.session.next_request_id,
-            handle,
-        };
-
-        self.session.send_packet(close_packet)?;
-        self.session.next_request_id += 1;
-
-        let close_response = ServerPacket::from_session(&mut self.session)?;
-        if let ServerPacket::Status {
-            status_code,
-            message,
-            request_id,
-        } = close_response
-        {
-            if status_code != SftpStatus::Ok as u32 {
-                return Err(SftpError::ServerError {
-                    code: status_code,
-                    request_id,
-                    message,
-                });
-            }
-        }
-
+        let handle = self.protocol.open_dir(path_str)?;
+        let files = self.read_entire_directory(&handle)?;
+        self.protocol.close(handle)?;
         self.current_listing = files.clone();
         self.directory_cache.insert(
             target_path,
@@ -299,8 +134,21 @@ impl SftpClient {
         );
 
         self.display_current_listing();
-
         Ok(())
+    }
+
+    fn read_entire_directory(&mut self, handle: &[u8]) -> Result<Vec<FileInfo>, SftpError> {
+        let mut all_files = Vec::new();
+
+        loop {
+            let files = self.protocol.read_dir(handle)?;
+            if files.is_empty() {
+                break;
+            }
+            all_files.extend(files);
+        }
+
+        Ok(all_files)
     }
 
     fn display_current_listing(&self) {
@@ -316,47 +164,16 @@ impl SftpClient {
         }
         .ok_or_else(|| SftpError::ClientError("Invalid UTF-8 in path".into()))?;
 
-        let realpath_packet = ClientPacket::RealPath {
-            request_id: self.session.next_request_id,
-            path: path_str.to_string(),
-        };
-        self.session.send_packet(realpath_packet)?;
+        let resolved_path = self.protocol.realpath(path_str)?;
 
-        self.session.next_request_id += 1;
-
-        let response = ServerPacket::from_session(&mut self.session)?;
-        match response {
-            ServerPacket::Name { files, .. } => {
-                if files.len() == 1 {
-                    let resolved_path = PathBuf::from(&files[0].name);
-
-                    let stat = self.stat(&resolved_path)?;
-                    if !stat.is_directory {
-                        return Err(SftpError::NotADirectory(
-                            resolved_path.display().to_string(),
-                        ));
-                    }
-
-                    self.working_dir = resolved_path;
-                    self.current_listing.clear();
-                    Ok(())
-                } else {
-                    Err(SftpError::UnexpectedResponse(
-                        "Expected exactly one path from RealPath",
-                    ))
-                }
-            }
-            ServerPacket::Status {
-                status_code,
-                request_id,
-                message,
-            } => Err(SftpError::ServerError {
-                code: status_code,
-                request_id,
-                message,
-            }),
-            _ => Err(SftpError::UnexpectedPacket("RealPath response")),
+        let attrs = self.protocol.stat(&resolved_path)?;
+        if !attrs.is_directory {
+            return Err(SftpError::NotADirectory(resolved_path));
         }
+
+        self.working_dir = PathBuf::from(resolved_path);
+        self.current_listing.clear();
+        Ok(())
     }
 
     fn print_working_directory(&self) -> Result<(), SftpError> {
@@ -384,6 +201,7 @@ impl SftpClient {
         todo!()
     }
 
+    /*
     fn get_file_handle(&mut self, path: &PathBuf) -> Result<Vec<u8>, SftpError> {
         let path_str = path
             .to_str()
@@ -420,7 +238,6 @@ impl SftpClient {
             _ => Err(SftpError::UnexpectedPacket("Stat response")),
         }
     }
-
     fn close_handle(&mut self, path: &str) -> Result<(), SftpError> {
         if let Some(handle) = self.handles.remove(path) {
             let close_packet = ClientPacket::Close {
@@ -462,4 +279,5 @@ impl SftpClient {
             _ => Err(SftpError::UnexpectedPacket("Stat response")),
         }
     }
+    */
 }
