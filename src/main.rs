@@ -1,12 +1,13 @@
 use crate::sftp::constants::*;
 use crate::sftp::session::SftpSession;
-use crate::sftp::{SftpClient, SftpCommand};
+use crate::sftp::SftpClient;
 use env_logger::Builder;
 use interface::CommandInterface;
 use log::{error, info, LevelFilter};
 use ssh2::Session;
 use std::net::TcpStream;
 
+mod filesystem;
 mod interface;
 mod sftp;
 
@@ -62,8 +63,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            Err(SftpError) => {
-                println!("Error parsing command!");
+            Err(e) => {
+                println!("Error parsing command: {:?}", e);
             }
         }
     }

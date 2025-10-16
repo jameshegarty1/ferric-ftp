@@ -167,7 +167,7 @@ impl<T: TransportLayer> SftpProtocol<T> {
         }
     }
 
-    pub fn read(&mut self, handle: &[u8]) -> Result<(), SftpError> {
+    pub fn read(&mut self, handle: &[u8]) -> Result<Vec<u8>, SftpError> {
         let mut offset: u64 = 0;
         let chunk_size: u32 = 32768;
         let mut result: Vec<u8> = Vec::new();
@@ -212,7 +212,6 @@ impl<T: TransportLayer> SftpProtocol<T> {
                 }
             }
         }
-        info!("File data: {:?}", String::from_utf8_lossy(&result));
-        Ok(())
+        Ok(result)
     }
 }

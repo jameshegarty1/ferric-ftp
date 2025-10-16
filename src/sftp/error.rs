@@ -12,7 +12,7 @@ pub enum SftpError {
     NotADirectory(String),
     UnexpectedPacket(&'static str),
     UnexpectedResponse(&'static str),
-    UnknownError,
+    //UnknownError,
     UnexpectedCommand,
     InvalidCommand(&'static str),
 }
@@ -35,7 +35,7 @@ impl fmt::Display for SftpError {
             SftpError::NotADirectory(path) => write!(f, "Not a directory: {}", path),
             SftpError::UnexpectedPacket(msg) => write!(f, "Unexpected packet: {}", msg),
             SftpError::UnexpectedResponse(msg) => write!(f, "Unexpected response: {}", msg),
-            SftpError::UnknownError => write!(f, "Unknown error"),
+            //SftpError::UnknownError => write!(f, "Unknown error"),
             SftpError::UnexpectedCommand => write!(f, "Unexpected command"),
             SftpError::InvalidCommand(msg) => write!(f, "Invalid command: {}", msg),
         }

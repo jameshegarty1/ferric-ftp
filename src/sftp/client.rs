@@ -1,21 +1,19 @@
 use super::constants::*;
 use super::error::SftpError;
-use super::packet::ClientPacket;
-use super::packet::ServerPacket;
+use super::protocol::SftpProtocol;
 use super::session::TransportLayer;
-use super::types::{DirectoryCache, FileAttributes, FileInfo, SftpCommand, SftpStatus};
-use crate::sftp::protocol::SftpProtocol;
+use super::types::{DirectoryCache, FileInfo, SftpCommand};
+use crate::filesystem;
 use log::info;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::SystemTime;
 
 pub struct SftpClient<T: TransportLayer> {
     protocol: SftpProtocol<T>,
     pub working_dir: PathBuf,
     pub directory_cache: HashMap<PathBuf, DirectoryCache>,
     pub current_listing: Vec<FileInfo>,
-    pub handles: HashMap<String, Vec<u8>>,
+    //pub handles: HashMap<String, Vec<u8>>,
 }
 
 impl<T: TransportLayer> SftpClient<T> {
@@ -28,7 +26,7 @@ impl<T: TransportLayer> SftpClient<T> {
             working_dir,
             directory_cache: HashMap::new(),
             current_listing: Vec::new(),
-            handles: HashMap::new(),
+            //handles: HashMap::new(),
         })
     }
 
@@ -65,6 +63,12 @@ impl<T: TransportLayer> SftpClient<T> {
             } else {
                 PathBuf::from(format!("/{}", new_components.join("/")))
             }
+        }
+    }
+
+    fn display_current_listing(&self) {
+        for file in self.current_listing.clone() {
+            println!("{}", file.display_name);
         }
     }
 
@@ -129,7 +133,7 @@ impl<T: TransportLayer> SftpClient<T> {
             target_path,
             DirectoryCache {
                 files,
-                timestamp: SystemTime::now(),
+                //timestamp: SystemTime::now(),
             },
         );
 
@@ -151,12 +155,6 @@ impl<T: TransportLayer> SftpClient<T> {
         Ok(all_files)
     }
 
-    fn display_current_listing(&self) {
-        for file in self.current_listing.clone() {
-            println!("{}", file.display_name);
-        }
-    }
-
     fn change_directory(&mut self, path: Option<&PathBuf>) -> Result<(), SftpError> {
         let target_path = match path {
             Some(p) => self.resolve_path(p),
@@ -167,7 +165,7 @@ impl<T: TransportLayer> SftpClient<T> {
             .to_str()
             .ok_or_else(|| SftpError::ClientError("Invalid UTF-8 in path".into()))?;
 
-        let attrs = self.protocol.stat(&path_str)?;
+        let attrs = self.protocol.stat(path_str)?;
         if !attrs.is_directory {
             return Err(SftpError::NotADirectory(path_str.to_string()));
         }
@@ -178,7 +176,7 @@ impl<T: TransportLayer> SftpClient<T> {
     }
 
     fn print_working_directory(&self) -> Result<(), SftpError> {
-        print!("{}\n", self.working_dir.display());
+        print!("{}", self.working_dir.display());
         Ok(())
     }
 
@@ -205,11 +203,29 @@ impl<T: TransportLayer> SftpClient<T> {
             .to_str()
             .ok_or_else(|| SftpError::ClientError("Invalid UTF-8 in path".into()))?;
 
-        let file_handle = self.protocol.open(path_str, SSH_FXF_READ)?;
+        let file_handle: Vec<u8> = self.protocol.open(path_str, SSH_FXF_READ)?;
+        let data: Vec<u8> = self.protocol.read(&file_handle)?;
 
-        let data = self.protocol.read(&file_handle);
+        let target_local_path: PathBuf = match local_path {
+            Some(path) => {
+                if path.is_dir() {
+                    let file_name = remote_path
+                        .file_name()
+                        .ok_or_else(|| SftpError::InvalidCommand("No filename in remote path"))?;
+                    path.join(file_name)
+                } else {
+                    path.clone()
+                }
+            }
+            None => {
+                let file_name = remote_path
+                    .file_name()
+                    .ok_or_else(|| SftpError::InvalidCommand("No filename in remote path"))?;
+                PathBuf::from(".").join(file_name)
+            }
+        };
 
-        info!("Got data {:?}", data);
+        filesystem::write_to_file(&target_local_path, &data).map_err(|e| SftpError::IoError(e))?;
 
         Ok(())
     }

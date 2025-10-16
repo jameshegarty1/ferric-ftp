@@ -19,26 +19,26 @@ impl CommandInterface {
         print!("{}", PROMPT);
         io::stdout()
             .flush()
-            .map_err(|e| SftpError::IoError(e.into()));
+            .map_err(|e| SftpError::IoError(e.into()))?;
 
         let mut input_buffer = String::new();
         io::stdin()
             .read_line(&mut input_buffer)
-            .map_err(|e| SftpError::IoError(e.into()));
+            .map_err(|e| SftpError::IoError(e.into()))?;
 
         Self::parse_input(&input_buffer)
     }
 
     pub fn parse_input(input: &str) -> Result<SftpCommand, SftpError> {
-        let mut tokens = input.trim().split_whitespace();
+        let mut tokens = input.split_whitespace();
 
         match tokens.next() {
             Some("ls") => {
-                let path = PathBuf::from(tokens.next().unwrap_or("."));
+                let path = PathBuf::from(tokens.next().unwrap_or(DEFAULT_LS_PATH));
                 Ok(SftpCommand::Ls { path: Some(path) })
             }
             Some("cd") => {
-                let path = PathBuf::from(tokens.next().unwrap_or("/"));
+                let path = PathBuf::from(tokens.next().unwrap_or(DEFAULT_CD_PATH));
                 Ok(SftpCommand::Cd { path: Some(path) })
             }
             Some("get") => {
@@ -58,7 +58,7 @@ impl CommandInterface {
             Some("pwd") => Ok(SftpCommand::Pwd),
             Some("bye") => Ok(SftpCommand::Bye),
             Some("help") => Ok(SftpCommand::Help),
-            Some(cmd) => Err(SftpError::UnexpectedCommand),
+            Some(_) => Err(SftpError::UnexpectedCommand),
             None => Err(SftpError::InvalidCommand("Empty command")),
         }
     }

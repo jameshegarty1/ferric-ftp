@@ -36,7 +36,7 @@ pub const S_IFSOCK: u32 = 0o140000; // socket
 // File pflags
 pub const SSH_FXF_READ: u32 = 0x00000001;
 pub const SSH_FXF_WRITE: u32 = 0x00000002;
-pub const SSH_FXF_APPEND: u32 = 0x00000004;
-pub const SSH_FXF_CREAT: u32 = 0x00000008;
-pub const SSH_FXF_TRUNC: u32 = 0x00000010;
-pub const SSH_FXF_EXCL: u32 = 0x00000020;
+//pub const SSH_FXF_APPEND: u32 = 0x00000004;
+//pub const SSH_FXF_CREAT: u32 = 0x00000008;
+//pub const SSH_FXF_TRUNC: u32 = 0x00000010;
+//pub const SSH_FXF_EXCL: u32 = 0x00000020;

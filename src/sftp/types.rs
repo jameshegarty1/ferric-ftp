@@ -1,7 +1,5 @@
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
-
-use ssh2::File;
+use std::time::SystemTime;
 
 use crate::sftp::constants::{
     SSH_FILEXFER_ATTR_ACMODTIME, SSH_FILEXFER_ATTR_PERMISSIONS, SSH_FILEXFER_ATTR_SIZE,
@@ -96,7 +94,7 @@ pub enum FileType {
 #[derive(Debug, Clone)]
 pub struct DirectoryCache {
     pub files: Vec<FileInfo>,
-    pub timestamp: SystemTime,
+    //pub timestamp: SystemTime,
 }
 
 #[repr(u8)]

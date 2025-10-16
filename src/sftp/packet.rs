@@ -1,7 +1,7 @@
 use super::constants::*;
 use super::error::SftpError;
 use super::session::SftpSession;
-use super::types::{FileAttributes, FileInfo, FileType};
+use super::types::{FileAttributes, FileInfo};
 use log::info;
 
 pub trait SftpPacketInfo {
@@ -132,7 +132,6 @@ pub trait SftpReader {
     fn read_u32(&mut self) -> Result<u32, SftpError>;
     fn read_u8(&mut self) -> Result<u8, SftpError>;
     fn read_string(&mut self) -> Result<Vec<u8>, SftpError>;
-    fn read_i64(&mut self) -> Result<i64, SftpError>;
     fn read_u64(&mut self) -> Result<u64, SftpError>;
     fn discard(&mut self, bytes: &usize) -> Result<(), SftpError>;
     fn parse_file_attributes(&mut self, flags: &u32) -> Result<(usize, FileAttributes), SftpError>;
@@ -149,10 +148,6 @@ impl SftpReader for SftpSession {
 
     fn read_string(&mut self) -> Result<Vec<u8>, SftpError> {
         self.read_string()
-    }
-
-    fn read_i64(&mut self) -> Result<i64, SftpError> {
-        self.read_i64()
     }
 
     fn read_u64(&mut self) -> Result<u64, SftpError> {
@@ -224,7 +219,7 @@ impl<'a> SftpReader for BufferReader<'a> {
         self.position += len;
         Ok(result)
     }
-
+    /*
     fn read_i64(&mut self) -> Result<i64, SftpError> {
         if self.position + 8 > self.data.len() {
             return Err(SftpError::ClientError(
@@ -245,6 +240,7 @@ impl<'a> SftpReader for BufferReader<'a> {
         self.position += 8;
         Ok(i64::from_be_bytes(bytes))
     }
+    */
 
     fn read_u64(&mut self) -> Result<u64, SftpError> {
         if self.position + 8 > self.data.len() {

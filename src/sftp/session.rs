@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 
 pub struct SftpSession {
     pub channel: Channel,
-    pub version: u32,
+    //pub version: u32,
     pub next_request_id: u32,
 }
 
@@ -43,7 +43,7 @@ impl SftpSession {
 
         let mut session = Self {
             channel,
-            version,
+            //version,
             next_request_id: 0,
         };
         match ServerPacket::from_session(&mut session)? {
@@ -129,9 +129,9 @@ impl SftpSession {
         }
 
         if flags & SSH_FILEXFER_ATTR_UIDGID != 0 {
-            let uid = self.read_u32()?;
+            self.read_u32()?; // uid
             len += 4;
-            let gid = self.read_u32()?;
+            self.read_u32()?; // gid
             len += 4;
         }
 
@@ -148,7 +148,7 @@ impl SftpSession {
         }
 
         if flags & SSH_FILEXFER_ATTR_ACMODTIME != 0 {
-            let atime = self.read_u32()?;
+            self.read_u32()?; // atime
             len += 4;
             attrs.modify_time = Some(self.read_u32()?);
             len += 4;
@@ -179,15 +179,6 @@ impl SftpSession {
             S_IFSOCK => FileType::Socket,
             _ => FileType::Unknown,
         }
-    }
-
-    pub fn debug_peek_bytes(&mut self, count: usize) -> Result<Vec<u8>, SftpError> {
-        let mut buffer = vec![0u8; count];
-        self.channel
-            .read_exact(&mut buffer)
-            .map_err(|e| SftpError::ClientError(e.into()))?;
-        info!("Raw bytes: {:02x?}", buffer);
-        Ok(buffer)
     }
 }
 
